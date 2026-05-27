@@ -16,6 +16,13 @@ This document proposes a revised AI pipeline architecture focused on:
 
 ---
 
+
+# Current Pipeline Flow
+
+![Current_Pipeline](./diagrams/current_pipeline.png)
+
+---
+
 # Existing System Problems
 
 ## 1. High AI Cost
