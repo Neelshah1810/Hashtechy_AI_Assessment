@@ -1,15 +1,27 @@
 # EzeeChatBot
 
-A minimal RAG (Retrieval-Augmented Generation) chatbot API. Upload your own content — plain text or a URL — and get a chatbot that answers questions grounded strictly in that content.
+A minimal RAG (Retrieval Augmented Generation) chatbot API. Upload your own content such as plain text or a URL and get a chatbot that answers questions grounded strictly in that content.
 
 Built with FastAPI, ChromaDB, sentence-transformers, and Groq.
+
+---
+
+## Tech Stack
+
+- FastAPI
+- ChromaDB
+- sentence-transformers
+- Groq API
+- SQLite
+
+---
 
 ## Setup
 
 ### Prerequisites
 
 - Python 3.10+
-- A free [Groq API key](https://console.groq.com/) (no credit card needed)
+- A free [Groq API key](https://console.groq.com/)
 
 ### Installation
 
@@ -19,7 +31,7 @@ cd Task1
 
 # create a virtual environment
 python -m venv venv
-source venv/bin/activate   # on Windows: venv\Scripts\activate
+source venv/bin/activate   # for Windows: venv\Scripts\activate
 
 # install dependencies
 pip install -r requirements.txt
@@ -35,9 +47,7 @@ cp .env.example .env
 uvicorn app.main:app --reload --port 8000
 ```
 
-The API will be live at `http://localhost:8000`. Interactive docs are at `http://localhost:8000/docs`.
-
-> **First run note:** The first request will take a few extra seconds because the embedding model (~80MB) downloads automatically. After that it's cached locally.
+The API will be live at `htpyttp://localhost:8000`. Interactive docs are at `http://localhost:8000/docs`.
 
 ---
 
@@ -147,13 +157,13 @@ The simplest approach is to split text every N characters. But this creates real
 
 The chunker in `app/chunker.py` works in three stages:
 
-1. **Paragraph splitting** — The text is first split on double newlines. This preserves the author's own structural boundaries. A paragraph about "pricing" won't get merged with a paragraph about "features."
+1. **Paragraph splitting** - The text is first split on double newlines. This preserves the author's own structural boundaries. A paragraph about "pricing" won't get merged with a paragraph about "features."
 
-2. **Sentence detection** — Within each paragraph, I split into sentences using a regex that handles common edge cases: abbreviations (Mr., Dr., etc.), initials (J. K. Rowling), and decimal numbers (3.14). It's not perfect for every language or format, but it covers the vast majority of English text.
+2. **Sentence detection** - Within each paragraph, I split into sentences using a regex that handles common edge cases: abbreviations (Mr., Dr., etc.), initials (J. K. Rowling), and decimal numbers (3.14). It's not perfect for every language or format, but it covers the vast majority of English text.
 
-3. **Grouping with overlap** — Sentences are accumulated into chunks targeting ~150 tokens (roughly 600 characters). When a chunk reaches the target size, the last sentence is carried forward into the next chunk. This overlap means that if an answer happens to sit right at a chunk boundary, at least one of the two chunks will have the full context.
+3. **Grouping with overlap** - Sentences are accumulated into chunks targeting ~500 tokens (roughly 2000 characters). When a chunk reaches the target size, the last 3 sentences are carried forward into the next chunk. This overlap means that if an answer happens to sit right at a chunk boundary, at least one of the two chunks will have the full context.
 
-### Why 150 tokens?
+### Why 500 tokens?
 
 - Small enough that the embedding captures specific meaning (not a vague summary of a whole page)
 - Large enough to hold a complete thought or explanation
@@ -161,7 +171,7 @@ The chunker in `app/chunker.py` works in three stages:
 
 ### Trade-offs
 
-This approach works well for prose — articles, documentation, reports. It's less ideal for heavily structured content like tables or code. With more time I'd add format-specific chunkers (see below).
+This approach works well for prose like articles, documentation, reports. It's less ideal for heavily structured content like tables or code. With more time I'd add format-specific chunkers.
 
 ---
 
@@ -169,31 +179,31 @@ This approach works well for prose — articles, documentation, reports. It's le
 
 Three layers of defense:
 
-1. **Relevance gate** — Before the LLM is even called, I check if the retrieved chunks are actually similar to the question (cosine similarity ≥ 0.3). If nothing relevant is found, the API returns a fallback message without wasting an LLM call.
+1. **Relevance gate** - Before the LLM is even called, I check if the retrieved chunks are actually similar to the question (cosine similarity ≥ 0.3). If nothing relevant is found, the API returns a fallback message without wasting an LLM call.
 
-2. **Grounded system prompt** — The system prompt explicitly tells the model to only use the provided context, and to say "I could not find the answer" if the information isn't there. Low temperature (0.3) further discourages creative responses.
+2. **Grounded system prompt** - The system prompt explicitly tells the model to only use the provided context, and to say "I could not find the answer" if the information isn't there. Low temperature (0.3) further discourages creative responses.
 
-3. **Post-response detection** — After the LLM responds, I scan for phrases like "could not find," "not mentioned in," etc. If detected, the message is counted as "unanswered" in the stats. This gives you a metric to monitor.
+3. **Post-response detection** - After the LLM responds, I scan for phrases like "could not find," "not mentioned in," etc. If detected, the message is counted as "unanswered" in the stats. This gives you a metric to monitor.
 
 ---
 
 ## Multi-Bot Isolation
 
-Each bot gets its own ChromaDB collection (named `bot_{uuid}`). Collections are completely independent — there's no shared index, no chance of one bot's knowledge leaking into another's queries. Stats are also keyed by bot_id in SQLite.
+Each bot gets its own ChromaDB collection (named `bot_{uuid}`). Collections are completely independent and there's no shared index, no chance of one bot's knowledge leaking into another's queries. Stats are also keyed by bot_id in SQLite.
 
 ---
 
 ## What I'd Do Differently With More Time
 
-1. **PDF support** — Add a `/upload` variant that accepts file uploads (multipart form data) and uses something like PyMuPDF or pdfplumber to extract text. The chunking pipeline is already set up for it; it's just the ingestion layer that's missing.
+1. **PDF support** - Add a `/upload` variant that accepts file uploads (multipart form data) and uses something like PyMuPDF or pdfplumber to extract text. The chunking pipeline is already set up for it; it's just the ingestion layer that's missing.
 
-2. **Smarter chunking for structured content** — The current chunker handles prose well, but tables, lists, and code blocks deserve their own logic. I'd detect these formats and keep them intact as single chunks rather than splitting through them.
+2. **Smarter chunking for structured content** - The current chunker handles prose well, but tables, lists, and code blocks deserve their own logic. I'd detect these formats and keep them intact as single chunks rather than splitting through them.
 
-3. **Async embedding generation** — Right now embeddings are generated synchronously. For large documents with hundreds of chunks, running the embedding model in a background worker (or using an async-compatible model server) would keep the upload endpoint responsive.
+3. **Async embedding generation** - Right now embeddings are generated synchronously. For large documents with hundreds of chunks, running the embedding model in a background worker (or using an async-compatible model server) would keep the upload endpoint responsive.
 
-4. **Persistent conversation storage** — Currently conversation history is passed by the client on each request. In production I'd store conversations server-side (keyed by a session ID) so clients don't have to manage that state.
+4. **Persistent conversation storage** - Currently conversation history is passed by the client on each request. In production I'd store conversations server-side (keyed by a session ID) so clients don't have to manage that state.
 
-5. **Chunk metadata in responses** — Return which chunks were used to answer each question, so the frontend could show "sources" alongside the answer. The data is already there in ChromaDB; it just needs to be surfaced in the API response.
+5. **Chunk metadata in responses** - Return which chunks were used to answer each question, so the frontend could show "sources" alongside the answer. The data is already there in ChromaDB; it just needs to be surfaced in the API response.
 
 ---
 
