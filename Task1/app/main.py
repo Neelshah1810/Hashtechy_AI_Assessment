@@ -1,21 +1,11 @@
-"""
-EzeeChatBot API — main application.
-
-Three endpoints:
-  POST /upload  — ingest text or URL into a new bot's knowledge base
-  POST /chat    — ask a question, get a streamed grounded answer
-  GET  /stats   — usage stats for a bot
-"""
-
+# importing libraries
 import uuid
 import time
 import json
-
 import requests
 from bs4 import BeautifulSoup
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
-
 from app.models import UploadRequest, UploadResponse, ChatRequest, StatsResponse
 from app.chunker import chunk_text
 from app.embeddings import generate_embeddings, generate_single_embedding
@@ -25,26 +15,22 @@ from app.stats_tracker import init_db, record_message, get_stats
 from app.config import TOP_K, RELEVANCE_THRESHOLD
 
 
+# FastAPI app
 app = FastAPI(
     title="EzeeChatBot API",
-    description="Upload your knowledge base, then chat with it. Answers are grounded in your content only.",
+    description="Upload your knowledge base and chat with it using Groq API.",
     version="1.0.0",
 )
 
 
+# initializing the database on startup
 @app.on_event("startup")
 def on_startup():
-    """Initialize the stats database on server start."""
     init_db()
 
 
-# ─── helpers ───────────────────────────────────────────────────────────
-
+# function to fetch URL content
 def fetch_url_content(url):
-    """
-    Fetch a URL and extract readable text from the HTML.
-    Strips out scripts, styles, nav, and other boilerplate.
-    """
     try:
         resp = requests.get(
             url,
@@ -57,7 +43,7 @@ def fetch_url_content(url):
 
     soup = BeautifulSoup(resp.text, "html.parser")
 
-    # strip elements that aren't useful content
+    # strip elements that are not useful content
     for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
         tag.decompose()
 
@@ -68,14 +54,12 @@ def fetch_url_content(url):
     return "\n\n".join(lines)
 
 
-# ─── routes ────────────────────────────────────────────────────────────
 
+# Routes 
+
+# route for uploading knowledge base
 @app.post("/upload", response_model=UploadResponse)
 def upload_knowledge(req: UploadRequest):
-    """
-    Upload text or a URL to create a new chatbot knowledge base.
-    Returns a bot_id you can use for /chat and /stats.
-    """
     if not req.text and not req.url:
         raise HTTPException(
             status_code=400,
@@ -129,12 +113,9 @@ def upload_knowledge(req: UploadRequest):
     )
 
 
+# route for chatting with the bot
 @app.post("/chat")
 async def chat(req: ChatRequest):
-    """
-    Chat with a bot. Streams the response back via Server-Sent Events.
-    The bot only answers from its uploaded knowledge base.
-    """
     if not bot_exists(req.bot_id):
         raise HTTPException(status_code=404, detail=f"No bot found with id '{req.bot_id}'.")
 
@@ -142,7 +123,7 @@ async def chat(req: ChatRequest):
     query_vec = generate_single_embedding(req.user_message)
     docs, distances = query_similar(req.bot_id, query_vec, top_k=TOP_K)
 
-    # filter by relevance — chromadb gives cosine distance, we want similarity
+    # filter by relevance
     relevant = []
     for doc, dist in zip(docs, distances):
         similarity = 1.0 - dist
@@ -151,7 +132,7 @@ async def chat(req: ChatRequest):
 
     start = time.time()
 
-    # no relevant chunks? don't even call the LLM — just say so
+    # if no relevant chunks then dont even call the LLM
     if not relevant:
         latency = (time.time() - start) * 1000
         record_message(
@@ -195,9 +176,9 @@ async def chat(req: ChatRequest):
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
+# route for bot stats
 @app.get("/stats/{bot_id}", response_model=StatsResponse)
 def bot_stats(bot_id: str):
-    """Get usage statistics for a specific bot."""
     if not bot_exists(bot_id):
         raise HTTPException(status_code=404, detail=f"No bot found with id '{bot_id}'.")
 
@@ -205,9 +186,9 @@ def bot_stats(bot_id: str):
     return StatsResponse(bot_id=bot_id, **stats)
 
 
+# route for health check
 @app.get("/")
 def root():
-    """Health check / API info."""
     return {
         "name": "EzeeChatBot API",
         "version": "1.0.0",
